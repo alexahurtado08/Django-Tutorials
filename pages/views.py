@@ -1,8 +1,11 @@
-from django.shortcuts import render
-from django.views.generic import TemplateView
-from django.views import View
-from django.http import HttpResponseRedirect
-from django.urls import reverse
+from django.shortcuts import render, redirect, get_object_or_404 
+from django.views.generic import TemplateView, ListView 
+from django.views import View 
+from django.http import HttpResponseRedirect 
+from django.urls import reverse 
+from django import forms 
+from django.core.exceptions import ValidationError 
+from .models import Product 
 
 class HomePageView(TemplateView):
     template_name = "pages/home.html"
@@ -35,69 +38,93 @@ class ContactPageView(TemplateView):
         })
         return context
     
-class Product:
-    products = [
-        {"id": "1", "name": "TV", "description": "Best SmartTV for you", "price": 450},
-        {"id": "2", "name": "iPhone", "description": "The last release of iPhone", "price": 500},
-        {"id": "3", "name": "Chromecast", "description": "The most complete", "price": 100},
-        {"id": "4", "name": "Glasses", "description": "Luxurious and modern Glasses", "price": 10},
-    ]
 
-class ProductIndexView(View):
-    template_name = 'products/index.html'
-    def get(self, request):
-        viewData = {}
-        viewData["title"] = "Products - Online Store"
-        viewData["subtitle"] = "List of products"
-        viewData["products"] = Product.products
-        return render(request, self.template_name, viewData)
-    
-class ProductShowView(View):
-    template_name = 'products/show.html'
-    def get(self, request, id):
-        try:
-            product = Product.products[int(id) - 1]
-        except (IndexError, ValueError):
-            # Si el ID no es válido, redireccionar a la página de inicio
-            return HttpResponseRedirect(reverse('home'))
-        viewData = {}
-        viewData["title"] = product["name"] + " - Online Store"
-        viewData["subtitle"] = product["name"] + " - Product information"
-        viewData["product"] = product
-        return render(request, self.template_name, viewData)
 
 from django import forms
 from django.core.exceptions import ValidationError
 
-class ProductForm(forms.Form):
-    name = forms.CharField(required=True)
-    price = forms.FloatField(required=True)
-    
-    def clean_price(self):
-        price = self.cleaned_data.get('price')
-        if price is not None and price <= 0:
-            raise ValidationError('Price must be greater than zero.')
-        return price
+class ProductForm(forms.ModelForm): 
+    name = forms.CharField(required=True) 
+    price = forms.FloatField(required=True) 
+    class Meta: 
+        model = Product 
+        fields = ['name', 'price'] 
+ 
+    def clean_price(self): 
+        price = self.cleaned_data.get('price') 
+        if price is not None and price <= 0: 
+            raise ValidationError('Price must be greater than zero.') 
+        return price 
+ 
+class ProductCreateView(View): 
+    template_name = 'products/create.html' 
+ 
+    def get(self, request): 
+        form = ProductForm() 
+        viewData = {} 
+        viewData["title"] = "Create product" 
+        viewData["form"] = form 
+        return render(request, self.template_name, viewData) 
+ 
+    def post(self, request): 
+        form = ProductForm(request.POST) 
+        if form.is_valid(): 
+            form.save() 
+            return redirect('index')  # Redirect to the product index page after successful creation
+        else: 
+            viewData = {} 
+            viewData["title"] = "Create product" 
+            viewData["form"] = form 
+            return render(request, self.template_name, viewData) 
 
-class ProductCreateView(View):
-    template_name = 'products/create.html'
 
-    def get(self, request):
-        form = ProductForm()
-        viewData = {
-            "title": "Create product",
-            "form": form
-        }
+
+from django.shortcuts import render, get_object_or_404, redirect
+from django.views import View
+from .models import Product
+
+class ProductIndexView(View): 
+    template_name = 'products/index.html' 
+ 
+    def get(self, request): 
+        viewData = {} 
+        viewData["title"] = "Products - Online Store" 
+        viewData["subtitle"] =  "List of products" 
+        viewData["products"] = Product.objects.all() 
+ 
+        return render(request, self.template_name, viewData) 
+
+class ProductShowView(View): 
+    template_name = 'products/show.html' 
+ 
+ 
+    def get(self, request, id): 
+ 
+        # Check if product id is valid 
+        try: 
+            product_id = int(id) 
+            if product_id < 1: 
+                raise ValueError("Product id must be 1 or greater") 
+            product = get_object_or_404(Product, pk=product_id) 
+        except (ValueError, IndexError): 
+            # If the product id is not valid, redirect to the home page 
+            return HttpResponseRedirect(reverse('home')) 
+         
+        viewData = {} 
+        product = get_object_or_404(Product, pk=product_id) 
+        viewData["title"] = product.name + " - Online Store" 
+        viewData["subtitle"] =  product.name + " - Product information" 
+        viewData["product"] = product 
+ 
         return render(request, self.template_name, viewData)
-
-    def post(self, request):
-        form = ProductForm(request.POST)
-        if form.is_valid():
-            # Aquí podrías guardar el producto si tuvieras un modelo
-            return render(request, 'products/product_created.html')  # Mostrar nueva plantilla
-        else:
-            viewData = {
-                "title": "Create product",
-                "form": form
-            }
-            return render(request, self.template_name, viewData)
+    
+class ProductListView(ListView): 
+    model = Product 
+    template_name = 'product_list.html' 
+    context_object_name = 'products'  # This will allow you to loop through 'products' in your template 
+ 
+    def get_context_data(self, **kwargs): 
+        context = super().get_context_data(**kwargs) 
+        context['title'] = 'Products - Online Store' 
+        context['subtitle'] = 'List of products' 
+        return context  
